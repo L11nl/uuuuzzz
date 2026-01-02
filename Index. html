@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>مدير المخزون الذكي | Smart Inventory</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    body{
+      font-family:'Tajawal', sans-serif;
+      background:
+        radial-gradient(900px 500px at 15% -10%, rgba(59,130,246,.18), transparent 60%),
+        radial-gradient(800px 500px at 90% 10%, rgba(16,185,129,.12), transparent 55%),
+        #0b1224;
+      color:#e2e8f0;
+      overflow-x:hidden;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar{ width:8px; }
+    ::-webkit-scrollbar-track{ background:#070c18; }
+    ::-webkit-scrollbar-thumb{ background:#3b82f6; border-radius:6px; }
+    ::-webkit-scrollbar-thumb:hover{ background:#2563eb; }
+
+    /* Glass */
+    .glass-panel{
+      background: rgba(15,23,42,.55);
+      border: 1px solid rgba(148,163,184,.18);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* 3D خفيف (CSS فقط = أسرع) */
+    .card3d{
+      transform: translateZ(0);
+      will-change: transform;
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+    }
+    .card3d:hover{
+      transform: perspective(900px) rotateX(2deg) rotateY(-2deg) translateY(-2px);
+      box-shadow: 0 18px 45px rgba(0,0,0,.35);
+      border-color: rgba(59,130,246,.30);
+    }
+
+    /* زر/عنصر ضغط */
+    .btn-action{
+      transition: transform .12s ease, box-shadow .2s ease, filter .2s ease;
+      transform: translateZ(0);
+      will-change: transform;
+    }
+    .btn-action:active{ transform: translateY(1px) scale(.99); }
+
+    /* رجّاج لكل لمسة */
+    .shakeTap{ animation: tapShake .18s ease-in-out; }
+    @keyframes tapShake{
+      0%{ transform: translateX(0) }
+      25%{ transform: translateX(-4px) }
+      50%{ transform: translateX(4px) }
+      75%{ transform: translateX(-3px) }
+      100%{ transform: translateX(0) }
+    }
+
+    /* Pop animation للعداد */
+    .pop{ animation: pop .18s ease-out; }
+    @keyframes pop{
+      0%{ transform: scale(1) }
+      45%{ transform: scale(1.10) }
+      100%{ transform: scale(1) }
+    }
+
+    /* دخول النتيجة */
+    @keyframes slideIn{ from{ opacity:0; transform: translateY(12px) } to{ opacity:1; transform: translateY(0) } }
+    .animate-slide-in{ animation: slideIn .28s ease-out both; }
+
+    /* تحسين hover للحقول */
+    .field-copy{
+      cursor:pointer;
+      transition: background .18s ease, border-color .18s ease, transform .12s ease;
+    }
+    .field-copy:hover{
+      background-color: rgba(51,65,85,.35);
+      border-color: rgba(59,130,246,.45);
+      transform: translateY(-1px);
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col items-center py-10 px-4">
+
+  <header class="w-full max-w-5xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-5">
+    <div class="space-y-1">
+      <h1 class="text-3xl font-extrabold text-blue-400 flex items-center gap-3">
+        <i class="fa-solid fa-boxes-stacked"></i>
+        <span>المخزون الذكي</span>
+      </h1>
+      <p class="text-slate-400 text-sm">نظام إدارة وتوزيع الحسابات التلقائي</p>
+      <p class="text-slate-500 text-xs">ملاحظة: النسخ يعمل أفضل على HTTPS أو localhost</p>
+    </div>
+
+    <div class="flex gap-4 w-full md:w-auto">
+      <div class="glass-panel card3d px-6 py-3 rounded-2xl text-center shadow-lg shadow-blue-500/10 flex-1 md:flex-none">
+        <span class="block text-xs text-slate-400">المتوفر بالمخزون</span>
+        <span id="stockCount" class="text-2xl font-extrabold text-emerald-300">0</span>
+      </div>
+      <div class="glass-panel card3d px-6 py-3 rounded-2xl text-center shadow-lg shadow-purple-500/10 flex-1 md:flex-none">
+        <span class="block text-xs text-slate-400">تم سحبها</span>
+        <span id="pulledCount" class="text-2xl font-extrabold text-purple-300">0</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="w-full max-w-5xl space-y-6">
+
+    <section class="glass-panel card3d p-6 rounded-3xl shadow-xl">
+      <div class="flex justify-between items-center mb-4 gap-3">
+        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-up text-blue-400"></i>
+          <span>تغذية المخزون</span>
+        </h2>
+
+        <button id="toggleBtn" class="tap-target text-slate-400 hover:text-white text-sm underline">
+          إخفاء/إظهار
+        </button>
+      </div>
+
+      <div id="inputSection" class="space-y-4">
+        <textarea id="bulkInput" rows="5"
+          class="w-full bg-slate-950/35 text-sm text-white p-4 rounded-2xl border border-slate-700/60 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 outline-none transition placeholder-slate-500"
+          placeholder="ضع القائمة هنا بالتنسيق:
+email;pass;recovery;url
+email;pass;recovery;url"></textarea>
+
+        <div class="flex flex-col md:flex-row justify-between gap-3">
+          <button id="clearBtn"
+            class="tap-target btn-action text-red-300 hover:text-red-200 transition px-4 py-2 rounded-xl border border-red-900/40 bg-red-950/20 hover:bg-red-950/30">
+            <i class="fa-solid fa-trash ml-1"></i> تصفير المخزون
+          </button>
+
+          <div class="flex flex-col sm:flex-row gap-3">
+            <button id="importBtn"
+              class="tap-target btn-action bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 text-white font-bold py-3 px-6 rounded-2xl flex items-center justify-center gap-2">
+              <i class="fa-solid fa-file-arrow-up text-blue-300"></i>
+              <span>استيراد ملف</span>
+            </button>
+            <input id="importFile" type="file" accept=".txt" class="hidden" />
+
+            <button id="exportBtn"
+              class="tap-target btn-action bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 text-white font-bold py-3 px-6 rounded-2xl flex items-center justify-center gap-2">
+              <i class="fa-solid fa-file-arrow-down text-emerald-300"></i>
+              <span>تصدير المخزون</span>
+            </button>
+
+            <button id="addBtn"
+              class="tap-target btn-action bg-blue-600 hover:bg-blue-500 text-white font-extrabold py-3 px-7 rounded-2xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
+              <i class="fa-solid fa-plus"></i>
+              <span>إضافة للمخزون</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="flex justify-center py-2">
+      <button id="pullBtn"
+        class="tap-target btn-action relative group bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-2xl font-black py-5 px-8 md:px-12 rounded-3xl shadow-2xl shadow-emerald-500/25 w-full md:w-auto border-b-4 border-emerald-900/60 active:border-b-0">
+        <div class="flex items-center justify-center gap-3">
+          <i class="fa-solid fa-hand-holding-hand"></i>
+          <span>سحب حساب جديد</span>
+        </div>
+        <div class="absolute inset-0 rounded-3xl ring-2 ring-white/15 group-hover:ring-white/30 transition-all"></div>
+      </button>
+    </div>
+
+    <section id="resultArea" class="hidden animate-slide-in">
+      <div class="glass-panel card3d p-1 rounded-[26px] border border-slate-600/50 shadow-2xl">
+        <div class="bg-slate-950/30 rounded-[22px] p-6">
+          <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-4 border-b border-slate-700/60 gap-2">
+            <span class="text-emerald-300 font-extrabold text-lg flex items-center gap-2">
+              <i class="fa-solid fa-check-circle"></i>
+              تم السحب بنجاح
+            </span>
+            <span class="text-xs text-slate-500 font-mono" id="timestamp"></span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div class="tap-target field-copy card3d bg-slate-950/30 p-3 rounded-2xl border border-slate-700/60 group"
+                 data-copy="email">
+              <label class="text-xs text-slate-400 block mb-1">البريد الإلكتروني (Email)</label>
+              <div class="flex justify-between items-center gap-3">
+                <span id="emailDisplay" class="font-mono text-blue-300 truncate">---</span>
+                <i class="fa-regular fa-copy text-slate-500 group-hover:text-white"></i>
+              </div>
+            </div>
+
+            <div class="tap-target field-copy card3d bg-slate-950/30 p-3 rounded-2xl border border-slate-700/60 group"
+                 data-copy="password">
+              <label class="text-xs text-slate-400 block mb-1">كلمة المرور (Password)</label>
+              <div class="flex justify-between items-center gap-3">
+                <span id="passDisplay" class="font-mono text-rose-300 truncate">---</span>
+                <i class="fa-regular fa-copy text-slate-500 group-hover:text-white"></i>
+              </div>
+            </div>
+
+            <div class="tap-target field-copy card3d bg-slate-950/30 p-3 rounded-2xl border border-slate-700/60 group"
+                 data-copy="recovery">
+              <label class="text-xs text-slate-400 block mb-1">الاسترداد (Recovery Email)</label>
+              <div class="flex justify-between items-center gap-3">
+                <span id="recDisplay" class="font-mono text-amber-300 truncate">---</span>
+                <i class="fa-regular fa-copy text-slate-500 group-hover:text-white"></i>
+              </div>
+            </div>
+
+            <div class="card3d bg-slate-950/30 p-3 rounded-2xl border border-slate-700/60 flex justify-between items-center gap-3">
+              <div>
+                <label class="text-xs text-slate-400 block mb-1">رابط الرسائل (Webhook)</label>
+                <span class="text-xs text-slate-500">للوصول لكود التحقق</span>
+              </div>
+              <a id="urlBtn" href="#" target="_blank" rel="noopener"
+                 class="tap-target btn-action bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 rounded-xl transition shadow-lg shadow-indigo-600/20">
+                <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i> فتح
+              </a>
+            </div>
+          </div>
+
+          <div class="mt-2 space-y-2">
+            <button id="copyFullBtn"
+              class="tap-target btn-action w-full bg-slate-800/55 hover:bg-slate-700/60 border border-slate-700/60 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 group">
+              <i class="fa-solid fa-clipboard-list text-blue-400 group-hover:text-blue-300"></i>
+              <span>نسخ المعلومات كاملة (شامل)</span>
+            </button>
+            <p class="text-center text-xs text-slate-500">ينسخ: الايميل، الباسورد، التحقق، ورابط الرسائل</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast"
+    class="fixed bottom-5 left-5 bg-slate-900/90 border border-slate-700/70 text-white px-5 py-3 rounded-2xl shadow-2xl transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center gap-3">
+    <i id="toastIcon" class="fa-solid fa-info-circle"></i>
+    <span id="toastMsg">تم العملية بنجاح</span>
+  </div>
+
+  <script>
+    (function () {
+      // DOM
+      const stockCountEl = document.getElementById('stockCount');
+      const pulledCountEl = document.getElementById('pulledCount');
+
+      const inputSectionEl = document.getElementById('inputSection');
+      const bulkInputEl = document.getElementById('bulkInput');
+
+      const resultAreaEl = document.getElementById('resultArea');
+      const timestampEl = document.getElementById('timestamp');
+
+      const emailDisplayEl = document.getElementById('emailDisplay');
+      const passDisplayEl = document.getElementById('passDisplay');
+      const recDisplayEl = document.getElementById('recDisplay');
+      const urlBtnEl = document.getElementById('urlBtn');
+
+      const toggleBtn = document.getElementById('toggleBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const addBtn = document.getElementById('addBtn');
+      const pullBtn = document.getElementById('pullBtn');
+      const copyFullBtn = document.getElementById('copyFullBtn');
+
+      const importBtn = document.getElementById('importBtn');
+      const importFile = document.getElementById('importFile');
+      const exportBtn = document.getElementById('exportBtn');
+
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      const toastIcon = document.getElementById('toastIcon');
+      let toastTimeout;
+
+      // Storage
+      const STORAGE_KEYS = {
+        data: 'smartInventory_data',
+        pulled: 'smartInventory_pulled',
+        last: 'smartInventory_lastPulled'
+      };
+
+      let inventory = [];
+      let pulledCounter = 0;
+      let currentAccount = null;
+
+      // Shake لكل لمسة فعلياً (يشتغل على الموبايل والكمبيوتر)
+      function triggerShake(el){
+        if (!el) return;
+        el.classList.remove('shakeTap');
+        void el.offsetWidth;
+        el.classList.add('shakeTap');
+        setTimeout(() => el.classList.remove('shakeTap'), 220);
+      }
+
+      function popEl(el){
+        if(!el) return;
+        el.classList.remove('pop');
+        void el.offsetWidth;
+        el.classList.add('pop');
+        setTimeout(() => el.classList.remove('pop'), 220);
+      }
+
+      // التقط أي لمسة على عناصر تفاعلية
+      function onTap(e){
+        const el =
+          e.target.closest('.tap-target') ||
+          e.target.closest('button') ||
+          e.target.closest('a') ||
+          e.target.closest('.field-copy');
+
+        if (el) triggerShake(el);
+      }
+      document.addEventListener('pointerdown', onTap, { capture: true, passive: true });
+      document.addEventListener('touchstart', onTap, { capture: true, passive: true });
+
+      // Storage helpers
+      function safeJsonParse(value, fallback) { try { return JSON.parse(value); } catch { return fallback; } }
+
+      function saveToStorage() {
+        localStorage.setItem(STORAGE_KEYS.data, JSON.stringify(inventory));
+        localStorage.setItem(STORAGE_KEYS.pulled, String(pulledCounter));
+        if (currentAccount) localStorage.setItem(STORAGE_KEYS.last, JSON.stringify(currentAccount));
+      }
+
+      function loadFromStorage() {
+        const data = localStorage.getItem(STORAGE_KEYS.data);
+        const pulled = localStorage.getItem(STORAGE_KEYS.pulled);
+        inventory = data ? safeJsonParse(data, []) : [];
+        pulledCounter = pulled ? Number(pulled) || 0 : 0;
+      }
+
+      function getLastPulled() {
+        const last = localStorage.getItem(STORAGE_KEYS.last);
+        return last ? safeJsonParse(last, null) : null;
+      }
+
+      function setStockCounterColor() {
+        if (inventory.length === 0) stockCountEl.className = "text-2xl font-extrabold text-red-400";
+        else if (inventory.length < 5) stockCountEl.className = "text-2xl font-extrabold text-amber-300";
+        else stockCountEl.className = "text-2xl font-extrabold text-emerald-300";
+      }
+
+      function updateUI(pop = true) {
+        const prevStock = Number(stockCountEl.textContent || 0);
+        const prevPulled = Number(pulledCountEl.textContent || 0);
+
+        stockCountEl.textContent = inventory.length;
+        pulledCountEl.textContent = pulledCounter;
+
+        setStockCounterColor();
+
+        if(pop){
+          if(prevStock !== inventory.length) popEl(stockCountEl);
+          if(prevPulled !== pulledCounter) popEl(pulledCountEl);
+        }
+      }
+
+      function showToast(message, type = 'info') {
+        toastMsg.textContent = message;
+
+        toast.className =
+          "fixed bottom-5 left-5 px-5 py-3 rounded-2xl shadow-2xl transform transition-all duration-300 z-50 flex items-center gap-3 font-bold border";
+
+        if (type === 'success') {
+          toast.classList.add('bg-emerald-950/80', 'border-emerald-800/60', 'text-emerald-100');
+          toastIcon.className = "fa-solid fa-circle-check text-emerald-300";
+        } else if (type === 'error') {
+          toast.classList.add('bg-red-950/80', 'border-red-800/60', 'text-red-100');
+          toastIcon.className = "fa-solid fa-triangle-exclamation text-red-300";
+        } else if (type === 'copy') {
+          toast.classList.add('bg-blue-950/80', 'border-blue-800/60', 'text-blue-100');
+          toastIcon.className = "fa-solid fa-copy text-blue-300";
+        } else {
+          toast.classList.add('bg-slate-900/90', 'border-slate-700/70', 'text-white');
+          toastIcon.className = "fa-solid fa-info-circle text-slate-200";
+        }
+
+        toast.classList.remove('translate-y-20', 'opacity-0');
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+          toast.classList.add('translate-y-20', 'opacity-0');
+        }, 2600);
+      }
+
+      // Clipboard with fallback
+      async function copyText(text) {
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+          }
+        } catch (_) {}
+
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.top = '-9999px';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          return ok;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function displayResult(acc) {
+        if (!acc) return;
+
+        resultAreaEl.classList.remove('hidden');
+        resultAreaEl.classList.remove('animate-slide-in');
+        void resultAreaEl.offsetWidth;
+        resultAreaEl.classList.add('animate-slide-in');
+
+        emailDisplayEl.textContent = acc.email || '---';
+        passDisplayEl.textContent = acc.password || '---';
+        recDisplayEl.textContent = acc.recovery || 'غير متوفر';
+
+        urlBtnEl.href = acc.url && acc.url !== '' ? acc.url : '#';
+
+        const now = new Date();
+        timestampEl.textContent = now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+
+      // Shared add
+      function addLinesToStock(text) {
+        const lines = text
+          .replace(/\r/g, '')
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l.length >= 5);
+
+        let addedCount = 0;
+        let duplicateCount = 0;
+        let invalidCount = 0;
+
+        for (const line of lines) {
+          const parts = line.split(';').map(p => p.trim());
+          if (parts.length < 2) { invalidCount++; continue; }
+
+          const email = parts[0];
+          const password = parts[1];
+          const recovery = parts[2] || "غير متوفر";
+          const url = parts[3] || "#";
+
+          if (!email || !password) { invalidCount++; continue; }
+
+          const exists = inventory.some(acc => acc.email === email);
+          if (exists) { duplicateCount++; continue; }
+
+          inventory.push({ email, password, recovery, url });
+          addedCount++;
+        }
+
+        saveToStorage();
+        updateUI(true);
+        return { addedCount, duplicateCount, invalidCount };
+      }
+
+      function addToStock() {
+        const input = bulkInputEl.value;
+        if (!input.trim()) {
+          showToast('الحقل فارغ!', 'error');
+          return;
+        }
+
+        const { addedCount, duplicateCount, invalidCount } = addLinesToStock(input);
+        bulkInputEl.value = '';
+
+        let msg = `تمت إضافة ${addedCount} حساب.`;
+        if (duplicateCount) msg += ` (تم تجاهل ${duplicateCount} مكرر)`;
+        if (invalidCount) msg += ` (تم تجاهل ${invalidCount} غير صالح)`;
+
+        showToast(msg, addedCount ? 'success' : 'error');
+      }
+
+      function pullAccount() {
+        if (inventory.length === 0) {
+          showToast('المخزون فارغ! الرجاء التغذية أولاً.', 'error');
+          triggerShake(pullBtn);
+          return;
+        }
+
+        currentAccount = inventory.shift();
+        pulledCounter++;
+
+        saveToStorage();
+        updateUI(true);
+        displayResult(currentAccount);
+        showToast('تم سحب الحساب بنجاح', 'success');
+      }
+
+      function clearStorage() {
+        if (!confirm('هل أنت متأكد من حذف المخزون بالكامل؟ لا يمكن التراجع.')) return;
+
+        inventory = [];
+        pulledCounter = 0;
+        currentAccount = null;
+
+        localStorage.removeItem(STORAGE_KEYS.data);
+        localStorage.removeItem(STORAGE_KEYS.pulled);
+        localStorage.removeItem(STORAGE_KEYS.last);
+
+        updateUI(true);
+        showToast('تم تصفير المخزون', 'success');
+        resultAreaEl.classList.add('hidden');
+      }
+
+      async function copyField(type) {
+        const acc = currentAccount || getLastPulled();
+        if (!acc) {
+          showToast('لا يوجد حساب مسحوب للنسخ. اسحب حساب أولاً.', 'error');
+          return;
+        }
+
+        let text = '';
+        let label = '';
+        if (type === 'email') { text = acc.email; label = 'الإيميل'; }
+        else if (type === 'password') { text = acc.password; label = 'الباسورد'; }
+        else { text = acc.recovery; label = 'التحقق'; }
+
+        const ok = await copyText(String(text || ''));
+        showToast(ok ? `تم نسخ ${label}` : 'فشل النسخ (جرّب HTTPS أو localhost)', ok ? 'copy' : 'error');
+      }
+
+      // ✅ التنسيق المطلوب + إضافة رابط الرسائل
+      async function copyFullCombo() {
+        const acc = currentAccount || getLastPulled();
+        if (!acc) {
+          showToast('لا يوجد حساب مسحوب لنسخ المعلومات. اسحب حساب أولاً.', 'error');
+          return;
+        }
+
+        const textToCopy =
+          `الايميل: ${acc.email}\n` +
+          `الباسورد: ${acc.password}\n` +
+          `التحقق: ${acc.recovery}\n` +
+          `رابط الرسائل: ${acc.url || "#"}`;
+
+        const ok = await copyText(textToCopy);
+        showToast(ok ? 'تم نسخ المعلومات كاملة (شامل)' : 'فشل النسخ (جرّب HTTPS أو localhost)', ok ? 'success' : 'error');
+      }
+
+      async function importTxtFile(file) {
+        if (!file) return;
+
+        if (!file.name.toLowerCase().endsWith('.txt')) {
+          showToast('الرجاء اختيار ملف TXT فقط', 'error');
+          return;
+        }
+
+        try {
+          const content = await file.text();
+          const { addedCount, duplicateCount, invalidCount } = addLinesToStock(content);
+
+          let msg = `تم استيراد الملف. تمت إضافة ${addedCount} حساب.`;
+          if (duplicateCount) msg += ` (مكرر: ${duplicateCount})`;
+          if (invalidCount) msg += ` (غير صالح: ${invalidCount})`;
+
+          showToast(msg, addedCount ? 'success' : 'error');
+        } catch (e) {
+          showToast('فشل قراءة الملف', 'error');
+        }
+      }
+
+      function exportStockToTxt() {
+        if (!inventory.length) {
+          showToast('المخزون فارغ! لا يوجد شيء للتصدير.', 'error');
+          return;
+        }
+
+        const content = inventory
+          .map(acc => `${acc.email};${acc.password};${acc.recovery};${acc.url}`)
+          .join('\n');
+
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `inventory_${new Date().toISOString().slice(0,10)}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        URL.revokeObjectURL(url);
+        showToast(`تم تصدير ${inventory.length} حساب إلى ملف TXT`, 'success');
+      }
+
+      // Events
+      toggleBtn.addEventListener('click', () => inputSectionEl.classList.toggle('hidden'));
+      clearBtn.addEventListener('click', clearStorage);
+      addBtn.addEventListener('click', addToStock);
+      pullBtn.addEventListener('click', pullAccount);
+      copyFullBtn.addEventListener('click', copyFullCombo);
+
+      importBtn.addEventListener('click', () => importFile.click());
+      importFile.addEventListener('change', async () => {
+        const file = importFile.files && importFile.files[0] ? importFile.files[0] : null;
+        await importTxtFile(file);
+        importFile.value = '';
+      });
+
+      exportBtn.addEventListener('click', exportStockToTxt);
+
+      document.querySelectorAll('[data-copy]').forEach(card => {
+        card.addEventListener('click', () => copyField(card.getAttribute('data-copy')));
+      });
+
+      window.addEventListener('load', () => {
+        loadFromStorage();
+        updateUI(false);
+
+        const last = getLastPulled();
+        if (last) {
+          currentAccount = last;
+          displayResult(last);
+        }
+      });
+
+    })();
+  </script>
+</body>
+</html>
